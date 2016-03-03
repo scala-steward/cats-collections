@@ -1,7 +1,7 @@
 package dogs
 
-import dogs.Order._
 import dogs.Predef._
+import algebra.Order
 
 import scala.annotation.tailrec
 
@@ -18,23 +18,23 @@ sealed class Range[A](val start: A, val end: A) {
     * It basically calculates what is to the left of range that is in this and what is to the right
     * of range that is in this (in both cases it does not include elements in range)
     */
-  def -(range: Range[A])(implicit discrete: Enum[A]): (Range[A], Range[A]) = {
-    if (discrete.compare(end, range.start) == LT) {
+  def -(range: Range[A])(implicit discrete: Enum[A], order: Order[A]): (Range[A], Range[A]) = {
+    if (order.compare(end, range.start) < 0) {
       (this, Range.empty[A]())
     }
-    else if (discrete.compare(start, range.end) == GT) {
+    else if (order.compare(start, range.end) > 0) {
       (Range.empty[A](), this)
     }
     else {
-      (discrete.compare(start, range.start), discrete.compare(end, range.end)) match {
-        case (EQ, GT) => (Range.empty(), Range(discrete.succ(range.end), end))
-        case (EQ, _)  => (Range.empty(), Range.empty())
+      (order.compare(start, range.start), order.compare(end, range.end)) match {
+        case (0, x) if x > 0 => (Range.empty(), Range(discrete.succ(range.end), end))
+        case (0, _)  => (Range.empty(), Range.empty())
 
-        case (GT, GT) => (Range.empty(), Range(discrete.succ(range.end), end))
-        case (GT, _)  => (Range.empty(), Range.empty())
+        case (x, y) if x > 0 && y > 0 => (Range.empty(), Range(discrete.succ(range.end), end))
+        case (x, _) if x > 0 => (Range.empty(), Range.empty())
 
-        case (LT, GT) => (Range(start, discrete.pred(range.start)), Range(discrete.succ(range.end), end))
-        case (LT, _)  => (Range(start, discrete.pred(range.start)), Range.empty())
+        case (x, y) if x < 0 && y > 0 => (Range(start, discrete.pred(range.start)), Range(discrete.succ(range.end), end))
+        case (x, _) if x < 0 => (Range(start, discrete.pred(range.start)), Range.empty())
       }
     }
   }
@@ -42,54 +42,53 @@ sealed class Range[A](val start: A, val end: A) {
   /**
     * Verify that the passed range is within
     */
-  def contains(range: Range[A])(implicit discrete: Enum[A]) =
-     discrete.le(start, range.start) && discrete.ge(end, range.end)
+  def contains(range: Range[A])(implicit order: Order[A]) =
+     order.lteqv(start, range.start) && order.gteqv(end, range.end)
 
   /**
     * Generates the elements of the range [start, end] base of the discrete operations
     */
-  def generate(implicit discrete: Enum[A]): List[A] = gen (start, end, List.empty)(_=>{})
+  def generate(implicit discrete: Enum[A], order: Order[A]): List[A] = gen (start, end, List.empty)(_=>{})
 
   /**
     * Generates the elements of the range [end, start] base of the discrete operations
     */
-  def reverse(implicit discrete: Enum[A]): List[A] = {
+  def reverse(implicit discrete: Enum[A], order: Order[A]): List[A] = {
     gen(end, start, List.empty)(_=>{})(new Enum[A] {
       override def pred(x: A): A = discrete.succ(x)
       override def succ(x: A): A = discrete.pred(x)
-      override def apply(l: A, r: A): Ordering = discrete.apply(l, r)
-    })
+    }, order.reverse)
   }
 
   /**
     * Verify is x is in range [start, end]
     */
-  def contains(x: A)(implicit discrete: Enum[A]) = discrete.ge(x, start) && discrete.le(x, end)
+  def contains(x: A)(implicit A: Order[A]) = A.gteqv(x, start) && A.lteqv(x, end)
 
   /**
    * Return all the values in the Range as a List
    */
-  def toList(implicit A: Enum[A]): List[A] = {
+  def toList(implicit eA: Enum[A], oA: Order[A]): List[A] = {
     val lb = new ListBuilder[A]
-    foreach(lb += _)
+   foreach(lb += _)
     lb.run
   }
 
   /**
     * Apply function f to each element in range [star, end]
     */
-  def foreach(f: A => Unit)(implicit discrete: Enum[A]): Unit = {
+  def foreach(f: A => Unit)(implicit discrete: Enum[A], order: Order[A]): Unit = {
     val ignore = gen(start, end, List.empty)(f)
   }
 
-  def map[B](f: A => B)(implicit discrete: Enum[A]): List[B] =
+  def map[B](f: A => B)(implicit discrete: Enum[A], order: Order[A]): List[B] =
     genMap[B](start, end, List.empty)(f)
 
-  def foldLeft[B](s: B, f: (B, A) => B)(implicit discrete: Enum[A]): B =
+  def foldLeft[B](s: B, f: (B, A) => B)(implicit discrete: Enum[A], order: Order[A]): B =
     generate.foldLeft(s)(f)
 
-  @tailrec private def genMap[B](a: A, b: A, xs: List[B])(f: A => B)(implicit discrete: Enum[A]): List[B] = {
-    if (discrete.compare(a, b) == EQ) {
+  @tailrec private def genMap[B](a: A, b: A, xs: List[B])(f: A => B)(implicit discrete: Enum[A], order: Order[A]): List[B] = {
+    if (order.compare(a, b) == 0) {
       xs ::: Nel(f(a), List.empty)
     } else if (discrete.adj(a, b)) {
 
@@ -99,8 +98,8 @@ sealed class Range[A](val start: A, val end: A) {
     }
   }
 
-  @tailrec private def gen(a: A, b: A, xs: List[A])(f: A=>Unit)(implicit discrete: Enum[A]): List[A] = {
-      if (discrete.compare(a, b) == EQ) {
+  @tailrec private def gen(a: A, b: A, xs: List[A])(f: A=>Unit)(implicit discrete: Enum[A], order: Order[A]): List[A] = {
+      if (order.compare(a, b) == 0) {
         f(a)
         xs ::: Nel(a, List.empty)
       } else if (discrete.adj(a, b)) {

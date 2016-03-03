@@ -5,6 +5,7 @@ import org.openjdk.jmh.annotations.{Benchmark, Scope, Setup, State}
 
 import scala.util.Random
 import scalaz.Diev
+import algebra.std.int._
 
 /**
   * Created by anicolaspp on 2/18/16.
